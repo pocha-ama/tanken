@@ -65,7 +65,8 @@ summary{font-size:22px;font-weight:700;cursor:pointer}
 
 <script src="qrcode.js"></script>
 <script>
-const base = new URL("index.html", location.href).href;
+const base = new URL("./", location.href).href;
+const isLocal = location.protocol === "file:";
 const MAP = {
   1: "<b>左側</b> → 草原<br><b>右側</b> → 川辺",
   2: "<b>左側</b> → 川辺（6回目から乾季）<br><b>右側</b> → 草原（変化なし）"
@@ -79,6 +80,11 @@ function show(r){
   document.getElementById("qmap").innerHTML = MAP[r];
   const box = document.getElementById("qr");
   box.innerHTML = "";
+  if (isLocal){
+    box.style.maxWidth = "380px";
+    box.innerHTML = "<b>このページはパソコンの中のファイルとして開かれています。</b><br>このままQRコードを作ると、スマホからは開けません。GitHub Pagesの公開URL（https://〜.github.io/〜/teacher.html）からこのページを開き直してください。";
+    return;
+  }
   if (window.qrcode){
     const q = qrcode(0, "M");
     q.addData(url);
