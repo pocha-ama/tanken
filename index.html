@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>探検隊の食料探し</title>
+<style>
+:root{
+  --bg:#F4EDE1; --card:#FFFBF4; --ink:#2A2119; --sub:#6B5B4B;
+  --accent:#B5532A; --accent2:#2E6B6E; --line:#E2D5C1;
+  --good:#2E6B6E; --bad:#A3361F;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
+  -webkit-text-size-adjust:100%}
+.wrap{max-width:520px;margin:0 auto;padding:20px 16px 48px;min-height:100vh}
+.eyebrow{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.08em;margin:4px 0 0}
+h1{font-size:24px;margin:6px 0 14px;line-height:1.4}
+p{font-size:16px;line-height:1.75;margin:0 0 12px}
+.small{font-size:13px;color:var(--sub);line-height:1.6}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:16px;font-size:17px;font-weight:700;
+  background:var(--accent);color:#fff;cursor:pointer;text-align:center;text-decoration:none;font-family:inherit;margin-top:10px}
+.btn.alt{background:var(--accent2)}
+.btn.ghost{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+.btn.selected{outline:3px solid var(--ink);outline-offset:2px}
+.btn:disabled{opacity:.4;cursor:default}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row .btn{margin-top:0}
+.legend{display:grid;grid-template-columns:1fr;gap:8px;font-size:15px}
+.legend span{display:flex;justify-content:space-between;gap:12px}
+.hud{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;margin:4px 0 8px}
+.hud b{font-size:24px}
+.prog{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-bottom:14px}
+.prog i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+.bushes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bush{border:2px solid var(--line);background:var(--card);border-radius:14px;padding:16px 8px;font-size:16px;font-weight:700;
+  color:var(--ink);font-family:inherit;min-height:100px;cursor:pointer;line-height:1.4}
+.bush .ico{font-size:30px;display:block;margin-bottom:6px}
+.bush:active{transform:scale(.97)}
+.bush:disabled{opacity:.45;cursor:default}
+.bush.picked{border-color:var(--accent);opacity:1}
+.result{min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.result .big{font-size:60px;line-height:1}
+.result .what{font-size:18px;font-weight:700;margin-top:10px}
+.result .pts{font-size:24px;font-weight:800;margin-top:4px}
+.result .wait{font-size:17px;color:var(--sub)}
+.plus{color:var(--good)} .minus{color:var(--bad)} .zero{color:var(--sub)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{padding:8px 4px;border-bottom:1px solid var(--line);text-align:left}
+th{font-size:13px;color:var(--sub);font-weight:600}
+td.n,th.n{text-align:right}
+.total{font-size:40px;font-weight:800;margin:4px 0}
+.hidden{display:none}
+.reset{display:block;margin:28px auto 0;background:none;border:0;color:var(--sub);font-size:13px;text-decoration:underline;font-family:inherit;cursor:pointer}
+</style>
+</head>
+<body>
+<main class="wrap" id="app"></main>
+
+<script>
+/* =========================================================
+   設定（ここだけ書き換えてください）
+   ---------------------------------------------------------
+   FORM_URL : Googleフォームの回答用URL（…/viewform まで）
+   ENTRY    : 事前入力URLから調べた entry 番号（数字だけ）
+   ========================================================= */
+const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeQax-RkW5aSiJwp5qkh7ofco90n3Em25JagScFwQ_0G3SiQg/viewform";
+const ENTRY = {
+  round:     "990009484",  // 何回目の探検ですか
+  land:      "729011099",  // 探検した土地
+  total:     "262810959",  // 合計点
+  first:     "410610808",  // 前半5回の得点
+  second:    "10449334",   // 後半5回の得点
+  recommend: "447457937"   // 次に来る人へのおすすめ
+};
+
+/* ---------------- ゲームの設定 ---------------- */
+const TRIALS = 10;
+const CHANGE_FROM = 6; // 2回目の川辺だけ、この回から環境が変わる
+
+// 出てくるものの確率（教員だけが知る設定）
+const PROB = {
+  best:  {big:.40, small:.20, none:.35, danger:.05}, // 期待値 約+1.2点
+  mid:   {big:.10, small:.50, none:.35, danger:.05}, // 期待値 約+0.6点（2か所が同じ設定）
+  risky: {big:.50, small:.00, none:.20, danger:.30}, // 期待値 0点（大物は多いが危険も多い）
+  poor:  {big:.05, small:.25, none:.65, danger:.05}  // 期待値 約+0.15点（乾季のあとの元の当たり）
+};
+
+const LANDS = {
+  grass: {
+    name: "草原",
+    intro: "見渡すかぎり赤い大地と低い草が広がる草原です。茂みのかげには、獲物が身をひそめています。",
+    out: {
+      big:    {emoji:"🦘", label:"カンガルーを仕留めた！", pts:3},
+      small:  {emoji:"🦎", label:"オオトカゲを捕まえた",  pts:1},
+      none:   {emoji:"🍂", label:"何もいなかった",        pts:0},
+      danger: {emoji:"🐍", label:"毒ヘビにかまれた！",    pts:-5}
+    },
+    spots: [
+      {name:"赤い岩の茂み", type:"best"},
+      {name:"枯れ木の茂み", type:"mid"},
+      {name:"アリ塚の茂み", type:"mid"},
+      {name:"白い花の茂み", type:"risky"}
+    ]
+  },
+  river: {
+    name: "川辺",
+    intro: "ゆったりと流れる川のほとりです。岸辺のあちこちに、獲物が隠れていそうな場所があります。",
+    out: {
+      big:    {emoji:"🦆", label:"カモを仕留めた！",      pts:3},
+      small:  {emoji:"🐟", label:"魚を捕まえた",          pts:1},
+      none:   {emoji:"🍂", label:"何もいなかった",        pts:0},
+      danger: {emoji:"🐊", label:"ワニに襲われた！",      pts:-5}
+    },
+    spots: [
+      {name:"倒木のかげ",     type:"best"},
+      {name:"ユーカリの根元", type:"mid"},
+      {name:"砂の浅瀬",       type:"mid"},
+      {name:"葦の茂み",       type:"risky"}
+    ]
+  }
+};
+
+// 座席と回で、行く土地が決まる（2回目は左右で土地を交換）
+function landFor(round, seat){
+  if (round === 1) return seat === "left" ? "grass" : "river";
+  return seat === "left" ? "river" : "grass";
+}
+
+// 2回目の川辺だけ、途中で「乾季」が来て当たりの場所が移る
+function typeFor(state, spotName, trial){
+  const spot = LANDS[state.land].spots.find(s => s.name === spotName);
+  let t = spot.type;
+  if (state.land === "river" && state.round === 2 && trial >= CHANGE_FROM){
+    if (spotName === "倒木のかげ")     t = "poor";
+    if (spotName === "ユーカリの根元") t = "best";
+  }
+  return t;
+}
+
+function draw(type){
+  const p = PROB[type], r = Math.random();
+  let acc = 0;
+  for (const k of ["big","small","none","danger"]){
+    acc += p[k];
+    if (r < acc) return k;
+  }
+  return "none";
+}
+
+/* ---------------- 状態の保存（再読み込み対策） ---------------- */
+const params = new URLSearchParams(location.search);
+const ROUND = params.get("r") === "2" ? 2 : 1;
+const KEY = "tanken-game-r" + ROUND;
+
+function load(){
+  try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; }
+}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){}
+}
+function clearSave(){
+  try { localStorage.removeItem(KEY); } catch(e){}
+}
+
+let state = load() || {round: ROUND, screen: "seat"};
+state.round = ROUND;
+
+/* ---------------- 画面 ---------------- */
+const app = document.getElementById("app");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = n => (n > 0 ? "+" : "") + n;
+const cls = n => n > 0 ? "plus" : n < 0 ? "minus" : "zero";
+
+function render(){
+  save();
+  ({seat:viewSeat, intro:viewIntro, play:viewPlay, end:viewEnd}[state.screen] || viewSeat)();
+}
+
+function viewSeat(){
+  app.innerHTML = `
+    <p class="eyebrow">探検 ${state.round}回目</p>
+    <h1>あなたの席は、教室の左側ですか？ 右側ですか？</h1>
+    <p class="small">教壇からスクリーンを見て、左右を答えてください。分からなければ周りに合わせて大丈夫です。</p>
+    <div class="row">
+      <button class="btn alt" data-seat="left">左側</button>
+      <button class="btn alt" data-seat="right">右側</button>
+    </div>
+    ${resetBtn()}`;
+  app.querySelectorAll("[data-seat]").forEach(b => b.onclick = () => {
+    state.seat = b.dataset.seat;
+    state.land = landFor(state.round, state.seat);
+    const names = LANDS[state.land].spots.map(s => s.name);
+    for (let i = names.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i+1)); [names[i],names[j]] = [names[j],names[i]]; }
+    state.order = names;           // 表示順は一人ひとりランダム
+    state.trial = 1;
+    state.history = [];
+    state.screen = "intro";
+    render();
+  });
+  bindReset();
+}
+
+function viewIntro(){
+  const L = LANDS[state.land];
+  const o = L.out;
+  const r2 = state.round === 2
+    ? `<div class="card"><p style="margin:0">スクリーンに、<b>先にこの土地を探検した人たちのおすすめ</b>が映っています。参考にしても、しなくても構いません。</p></div>`
+    : `<p>どの場所に何がいるかは分かりません。<b>自分の結果だけ</b>を手がかりに探してください。</p>`;
+  app.innerHTML = `
+    <p class="eyebrow">探検 ${state.round}回目 ／ ${esc(L.name)}</p>
+    <h1>${esc(L.name)}で食料を探そう</h1>
+    <p>${esc(L.intro)}</p>
+    <p>4つの場所から1つを選んで、のぞいてみます。これを<b>${TRIALS}回</b>くり返し、できるだけ多くの点を集めてください。</p>
+    <div class="card legend">
+      <span>${o.big.emoji} ${esc(o.big.label.replace(/！$/,""))} <b class="plus">${fmt(o.big.pts)}</b></span>
+      <span>${o.small.emoji} ${esc(o.small.label)} <b class="plus">${fmt(o.small.pts)}</b></span>
+      <span>${o.none.emoji} ${esc(o.none.label)} <b class="zero">0</b></span>
+      <span>${o.danger.emoji} ${esc(o.danger.label.replace(/！$/,""))} <b class="minus">${fmt(o.danger.pts)}</b></span>
+    </div>
+    ${r2}
+    <p class="small">周りの人とは相談しないでください。</p>
+    <button class="btn" id="go">探検をはじめる</button>
+    ${resetBtn()}`;
+  document.getElementById("go").onclick = () => { state.screen = "play"; render(); };
+  bindReset();
+}
+
+function viewPlay(){
+  const L = LANDS[state.land];
+  const total = state.history.reduce((a,h) => a + h.pts, 0);
+  const last = state.history[state.history.length - 1];
+  app.innerHTML = `
+    <p class="eyebrow">探検 ${state.round}回目 ／ ${esc(L.name)}</p>
+    <div class="hud"><span>${Math.min(state.trial, TRIALS)} / ${TRIALS} 回目</span><span>合計 <b class="${cls(total)}">${total}</b> 点</span></div>
+    <div class="prog"><i style="width:${(state.history.length/TRIALS)*100}%"></i></div>
+    <div class="card result" id="result">
+      ${last ? resultHTML(last) : `<div class="wait">どこをのぞきますか？</div>`}
+    </div>
+    <div class="bushes">
+      ${state.order.map(n => `<button class="bush" data-spot="${esc(n)}"><span class="ico">🌿</span>${esc(n)}</button>`).join("")}
+    </div>`;
+  app.querySelectorAll(".bush").forEach(b => b.onclick = () => pick(b.dataset.spot, b));
+}
+
+function resultHTML(h){
+  const o = LANDS[state.land].out[h.outcome];
+  return `<div class="big">${o.emoji}</div>
+          <div class="what">${esc(h.spot)}：${esc(o.label)}</div>
+          <div class="pts ${cls(o.pts)}">${fmt(o.pts)} 点</div>`;
+}
+
+let busy = false;
+function pick(spot, btn){
+  if (busy) return;
+  busy = true;
+  app.querySelectorAll(".bush").forEach(b => b.disabled = true);
+  btn.classList.add("picked");
+  document.getElementById("result").innerHTML = `<div class="big">🌿</div><div class="wait">${esc(spot)}をのぞいています…</div>`;
+  const outcome = draw(typeFor(state, spot, state.trial));
+  const pts = LANDS[state.land].out[outcome].pts;
+  setTimeout(() => {
+    state.history.push({trial: state.trial, spot, outcome, pts});
+    state.trial += 1;
+    save();
+    document.getElementById("result").innerHTML = resultHTML(state.history[state.history.length - 1]);
+    setTimeout(() => {
+      busy = false;
+      if (state.history.length >= TRIALS){ state.screen = "end"; }
+      render();
+    }, 900);
+  }, 600);
+}
+
+function viewEnd(){
+  const L = LANDS[state.land];
+  const H = state.history;
+  const total  = H.reduce((a,h) => a + h.pts, 0);
+  const first  = H.filter(h => h.trial <= 5).reduce((a,h) => a + h.pts, 0);
+  const second = H.filter(h => h.trial >= 6).reduce((a,h) => a + h.pts, 0);
+  const rows = L.spots.map(s => {
+    const hs = H.filter(h => h.spot === s.name);
+    const sum = hs.reduce((a,h) => a + h.pts, 0);
+    return `<tr><td>${esc(s.name)}</td><td class="n">${hs.length}回</td><td class="n ${cls(sum)}">${sum}点</td></tr>`;
+  }).join("");
+
+  const recBlock = state.round === 1 ? `
+    <h1 style="font-size:20px;margin-top:22px">次にこの土地へ来る人に、どこをすすめますか？</h1>
+    <div class="row" id="rec">
+      ${L.spots.map(s => `<button class="btn ghost ${state.recommend===s.name?"selected":""}" data-rec="${esc(s.name)}">${esc(s.name)}</button>`).join("")}
+    </div>` : "";
+
+  app.innerHTML = `
+    <p class="eyebrow">探検 ${state.round}回目 ／ ${esc(L.name)}</p>
+    <h1>探検おつかれさまでした</h1>
+    <div class="card">
+      <p class="small" style="margin:0">あなたの合計点</p>
+      <div class="total ${cls(total)}">${total} 点</div>
+      <p class="small" style="margin:0">前半5回：${first}点 ／ 後半5回：${second}点</p>
+    </div>
+    <div class="card">
+      <table>
+        <tr><th>場所</th><th class="n">選んだ回数</th><th class="n">得点</th></tr>
+        ${rows}
+      </table>
+    </div>
+    ${recBlock}
+    <div id="send"></div>
+    ${resetBtn()}`;
+
+  app.querySelectorAll("[data-rec]").forEach(b => b.onclick = () => { state.recommend = b.dataset.rec; render(); });
+  renderSend({total, first, second});
+  bindReset();
+}
+
+function renderSend(sc){
+  const box = document.getElementById("send");
+  const needRec = state.round === 1 && !state.recommend;
+  const url = buildFormUrl(sc);
+  if (needRec){
+    box.innerHTML = `<button class="btn" disabled>記録を送る（おすすめを選んでください）</button>`;
+    return;
+  }
+  if (!url){
+    box.innerHTML = `<div class="card"><p class="small" style="margin:0">（教員の方へ）FORM_URL がまだ設定されていません。index.html の先頭の設定を書き換えてください。</p></div>`;
+    return;
+  }
+  box.innerHTML = `
+    <a class="btn" href="${esc(url)}" target="_blank" rel="noopener">記録を送る</a>
+    <p class="small" style="margin-top:8px">フォームが開いたら、内容を変えずに一番下の<b>「送信」</b>を押してください。</p>`;
+}
+
+function buildFormUrl(sc){
+  if (!FORM_URL) return "";
+  const L = LANDS[state.land];
+  const pairs = [
+    [ENTRY.round,     state.round + "回目"],
+    [ENTRY.land,      L.name],
+    [ENTRY.total,     sc.total],
+    [ENTRY.first,     sc.first],
+    [ENTRY.second,    sc.second],
+    [ENTRY.recommend, state.round === 1 ? state.recommend : ""]
+  ].filter(([k, v]) => k && v !== "" && v !== undefined);
+  const q = pairs.map(([k, v]) => `entry.${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+  return FORM_URL + (FORM_URL.includes("?") ? "&" : "?") + "usp=pp_url" + (q ? "&" + q : "");
+}
+
+function resetBtn(){ return `<button class="reset" id="reset">最初からやり直す</button>`; }
+function bindReset(){
+  const r = document.getElementById("reset");
+  if (!r) return;
+  let armed = false;
+  r.onclick = () => {
+    if (!armed){ armed = true; r.textContent = "もう一度押すと、記録が消えて最初に戻ります"; return; }
+    clearSave(); state = {round: ROUND, screen: "seat"}; render();
+  };
+}
+
+render();
+</script>
+</body>
+</html>
