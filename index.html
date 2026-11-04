@@ -71,14 +71,15 @@ const ENTRY = {
   round:     "990009484",  // 何回目の探検ですか
   land:      "729011099",  // 探検した土地
   total:     "262810959",  // 合計点
-  first:     "410610808",  // 前半5回の得点
-  second:    "10449334",   // 後半5回の得点
+  first:     "410610808",  // 前半の得点
+  second:    "10449334",   // 後半の得点
   recommend: "447457937"   // 次に来る人へのおすすめ
 };
 
 /* ---------------- ゲームの設定 ---------------- */
-const TRIALS = 10;
-const CHANGE_FROM = 6; // 2回目の川辺だけ、この回から環境が変わる
+const TRIALS = 20;                 // 1ラウンドの回数（10回に戻すときはここを 10 に）
+const HALF = TRIALS / 2;           // 前半・後半の区切り
+const CHANGE_FROM = HALF + 1;      // 2回目の川辺だけ、後半の最初の回から環境が変わる
 
 // 出てくるものの確率（教員だけが知る設定）
 const PROB = {
@@ -278,8 +279,8 @@ function viewEnd(){
   const L = LANDS[state.land];
   const H = state.history;
   const total  = H.reduce((a,h) => a + h.pts, 0);
-  const first  = H.filter(h => h.trial <= 5).reduce((a,h) => a + h.pts, 0);
-  const second = H.filter(h => h.trial >= 6).reduce((a,h) => a + h.pts, 0);
+  const first  = H.filter(h => h.trial <= HALF).reduce((a,h) => a + h.pts, 0);
+  const second = H.filter(h => h.trial > HALF).reduce((a,h) => a + h.pts, 0);
   const rows = L.spots.map(s => {
     const hs = H.filter(h => h.spot === s.name);
     const sum = hs.reduce((a,h) => a + h.pts, 0);
@@ -298,7 +299,7 @@ function viewEnd(){
     <div class="card">
       <p class="small" style="margin:0">あなたの合計点</p>
       <div class="total ${cls(total)}">${total} 点</div>
-      <p class="small" style="margin:0">前半5回：${first}点 ／ 後半5回：${second}点</p>
+      <p class="small" style="margin:0">前半${HALF}回：${first}点 ／ 後半${HALF}回：${second}点</p>
     </div>
     <div class="card">
       <table>
