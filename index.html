@@ -94,8 +94,8 @@ const LANDS = {
     name: "草原",
     intro: "見渡すかぎり赤い大地と低い草が広がる草原です。茂みのかげには、獲物が身をひそめています。",
     out: {
-      big:    {emoji:"🦘", label:"カンガルーを仕留めた！", pts:3},
-      small:  {emoji:"🦎", label:"オオトカゲを捕まえた",  pts:1},
+      big:    {emoji:"🐗", label:"イノシシを仕留めた！",   pts:3},
+      small:  {emoji:"🐇", label:"ウサギを捕まえた",      pts:1},
       none:   {emoji:"🍂", label:"何もいなかった",        pts:0},
       danger: {emoji:"🐍", label:"毒ヘビにかまれた！",    pts:-5}
     },
@@ -184,7 +184,7 @@ function viewSeat(){
   app.innerHTML = `
     <p class="eyebrow">探検 ${state.round}回目</p>
     <h1>あなたの席は、教室の左側ですか？ 右側ですか？</h1>
-    <p class="small">教壇からスクリーンを見て、左右を答えてください。分からなければ周りに合わせて大丈夫です。</p>
+    <p class="small">スクリーンを正面に見たときの左右です。分からなければ、周りの人に合わせて大丈夫です。</p>
     <div class="row">
       <button class="btn alt" data-seat="left">左側</button>
       <button class="btn alt" data-seat="right">右側</button>
